@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>TaskFlow</string>
+
+	<!-- URL scheme para o retorno do login do Google (GIDSignIn).
+	     REVERSED_CLIENT_ID vem do GoogleService-Info.plist gerado no
+	     Google Cloud Console — ver README, "Configurar Google Cloud". -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>REVERSED_CLIENT_ID_AQUI</string>
+			</array>
+		</dict>
+	</array>
+
+	<!-- Necessário para o app abrir o Google/Safari durante o login OAuth. -->
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>googlechrome</string>
+		<string>google</string>
+	</array>
+
+	<!-- Texto exibido ao usuário no pedido de permissão de notificações
+	     é controlado pelo próprio UNUserNotificationCenter, mas o modo
+	     "background fetch/refresh" precisa estar habilitado abaixo. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>processing</string>
+	</array>
+
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.taskflow.app.sync</string>
+	</array>
+
+	<key>UILaunchScreen</key>
+	<dict/>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+</dict>
+</plist>
