@@ -4,7 +4,9 @@ import { SortableContext, horizontalListSortingStrategy } from '@dnd-kit/sortabl
 import Column from './Column';
 import TaskCard from './TaskCard';
 import TaskDetailModal from './TaskDetailModal';
+import MobileBoardView from './MobileBoardView';
 import { isDueToday, isOverdue } from '../../utils/dateUtils';
+import { useIsMobile } from '../../hooks/useIsMobile';
 
 export default function KanbanBoard({ board, onUpdateBoardTitle, onAddColumn, onUpdateColumn, onDeleteColumn,
   onAddTask, onUpdateTask, onDeleteTask, onToggleComplete, onAddSubtask, onToggleSubtask, onDeleteSubtask,
@@ -14,6 +16,7 @@ export default function KanbanBoard({ board, onUpdateBoardTitle, onAddColumn, on
   const [selectedTask, setSelectedTask] = useState(null);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [boardTitle, setBoardTitle] = useState(board.title);
+  const isMobile = useIsMobile();
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -175,40 +178,54 @@ export default function KanbanBoard({ board, onUpdateBoardTitle, onAddColumn, on
         </div>
       </div>
 
-      <DndContext sensors={sensors} collisionDetection={closestCorners}
-        onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
-        <SortableContext items={columnIds} strategy={horizontalListSortingStrategy}>
-          <div className="board-columns">
-            {filteredColumns.map(col => (
-              <Column key={col.id} column={col}
-                onAddTask={onAddTask} onUpdateColumn={onUpdateColumn} onDeleteColumn={onDeleteColumn}
-                onTaskClick={handleTaskClick} onToggleComplete={onToggleComplete}
-                onToggleSubtask={onToggleSubtask} onAddSubtask={onAddSubtask}
-                activeDragType={activeItem?.type}
-                activeSubtaskParentId={activeItem?.type === 'subtask' ? activeItem.data.parentTaskId : null} />
-            ))}
-            <button className="add-column-btn" onClick={() => onAddColumn()}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-              Nova Categoria
-            </button>
-          </div>
-        </SortableContext>
+      {isMobile ? (
+        <MobileBoardView
+          columns={filteredColumns}
+          onAddTask={onAddTask}
+          onUpdateColumn={onUpdateColumn}
+          onDeleteColumn={onDeleteColumn}
+          onAddColumn={onAddColumn}
+          onTaskClick={handleTaskClick}
+          onToggleComplete={onToggleComplete}
+          onToggleSubtask={onToggleSubtask}
+          onAddSubtask={onAddSubtask}
+        />
+      ) : (
+        <DndContext sensors={sensors} collisionDetection={closestCorners}
+          onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
+          <SortableContext items={columnIds} strategy={horizontalListSortingStrategy}>
+            <div className="board-columns">
+              {filteredColumns.map(col => (
+                <Column key={col.id} column={col}
+                  onAddTask={onAddTask} onUpdateColumn={onUpdateColumn} onDeleteColumn={onDeleteColumn}
+                  onTaskClick={handleTaskClick} onToggleComplete={onToggleComplete}
+                  onToggleSubtask={onToggleSubtask} onAddSubtask={onAddSubtask}
+                  activeDragType={activeItem?.type}
+                  activeSubtaskParentId={activeItem?.type === 'subtask' ? activeItem.data.parentTaskId : null} />
+              ))}
+              <button className="add-column-btn" onClick={() => onAddColumn()}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Nova Categoria
+              </button>
+            </div>
+          </SortableContext>
 
-        <DragOverlay>
-          {activeItem?.type === 'task' && (
-            <div className="task-card-overlay">
-              <div className="task-card-title">{activeItem.data.title}</div>
-              {activeItem.data.subtitle && <div className="task-card-subtitle">{activeItem.data.subtitle}</div>}
-            </div>
-          )}
-          {activeItem?.type === 'subtask' && (
-            <div className="subtask-overlay">
-              <div className="subtask-checkbox" />
-              <span>{activeItem.data.text}</span>
-            </div>
-          )}
-        </DragOverlay>
-      </DndContext>
+          <DragOverlay>
+            {activeItem?.type === 'task' && (
+              <div className="task-card-overlay">
+                <div className="task-card-title">{activeItem.data.title}</div>
+                {activeItem.data.subtitle && <div className="task-card-subtitle">{activeItem.data.subtitle}</div>}
+              </div>
+            )}
+            {activeItem?.type === 'subtask' && (
+              <div className="subtask-overlay">
+                <div className="subtask-checkbox" />
+                <span>{activeItem.data.text}</span>
+              </div>
+            )}
+          </DragOverlay>
+        </DndContext>
+      )}
 
       <TaskDetailModal
         task={selectedTask}

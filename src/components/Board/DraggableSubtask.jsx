@@ -1,22 +1,23 @@
 import React from 'react';
 import { useDraggable } from '@dnd-kit/core';
 
-export default function DraggableSubtask({ subtask, parentTaskId, onToggle }) {
+export default function DraggableSubtask({ subtask, parentTaskId, onToggle, dragDisabled = false }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `subtask-${subtask.id}`,
     data: {
       type: 'subtask',
       subtask,
       parentTaskId
-    }
+    },
+    disabled: dragDisabled,
   });
+  const dragProps = dragDisabled ? {} : { ...attributes, ...listeners };
 
   return (
     <div
       ref={setNodeRef}
-      className={`task-subtask-item ${isDragging ? 'is-dragging' : ''} ${subtask.completed ? 'completed' : ''}`}
-      {...attributes}
-      {...listeners}
+      className={`task-subtask-item ${dragDisabled ? 'no-drag' : ''} ${isDragging ? 'is-dragging' : ''} ${subtask.completed ? 'completed' : ''}`}
+      {...dragProps}
       onClick={(e) => {
         // Prevent drag click from triggering other things
         e.stopPropagation();

@@ -6,19 +6,21 @@ import DraggableSubtask from './DraggableSubtask';
 
 const priorityLabels = { low: 'Baixa', medium: 'Média', high: 'Alta', urgent: 'Urgente' };
 
-export default function TaskCard({ task, onClick, onToggleComplete, onToggleSubtask, onAddSubtask, activeDragType, activeSubtaskParentId }) {
+export default function TaskCard({ task, onClick, onToggleComplete, onToggleSubtask, onAddSubtask, activeDragType, activeSubtaskParentId, dragDisabled = false }) {
   const [isSubtasksExpanded, setIsSubtasksExpanded] = useState(false);
   const [newSubtask, setNewSubtask] = useState('');
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } = useSortable({
     id: task.id,
     data: { type: 'task', task },
+    disabled: dragDisabled,
   });
 
-  const style = {
+  const style = dragDisabled ? undefined : {
     transform: CSS.Transform.toString(transform),
     transition,
   };
+  const dragProps = dragDisabled ? {} : { ...attributes, ...listeners };
 
   const completedSubs = (task.subtasks || []).filter(s => s.completed).length;
   const totalSubs = (task.subtasks || []).length;
@@ -38,9 +40,8 @@ export default function TaskCard({ task, onClick, onToggleComplete, onToggleSubt
     <div
       ref={setNodeRef}
       style={style}
-      {...attributes}
-      {...listeners}
-      className={`task-card ${isDragging ? 'is-dragging' : ''} ${task.completed ? 'completed' : ''} ${isSubtaskDropTarget ? 'subtask-drop-target' : ''}`}
+      {...dragProps}
+      className={`task-card ${dragDisabled ? 'no-drag' : ''} ${isDragging ? 'is-dragging' : ''} ${task.completed ? 'completed' : ''} ${isSubtaskDropTarget ? 'subtask-drop-target' : ''}`}
       onClick={() => onClick?.(task)}
     >
       {task.labels?.[0] && <div className="task-card-color-bar" style={{ background: task.labels[0] }} />}
@@ -89,7 +90,7 @@ export default function TaskCard({ task, onClick, onToggleComplete, onToggleSubt
       {totalSubs > 0 && isSubtasksExpanded && (
         <div className="task-card-subtasks-list" onClick={(e) => e.stopPropagation()}>
           {task.subtasks.map(st => (
-            <DraggableSubtask key={st.id} subtask={st} parentTaskId={task.id} onToggle={onToggleSubtask} />
+            <DraggableSubtask key={st.id} subtask={st} parentTaskId={task.id} onToggle={onToggleSubtask} dragDisabled={dragDisabled} />
           ))}
         </div>
       )}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import './App.css';
 import Header from './components/Layout/Header';
+import MobileNavBar from './components/Layout/MobileNavBar';
 import KanbanBoard from './components/Board/KanbanBoard';
 import CalendarView from './components/Calendar/CalendarView';
 import CalendarOverviewPanel from './components/Calendar/CalendarOverviewPanel';
@@ -226,6 +227,8 @@ function App() {
             />
           )}
         </div>
+
+        <MobileNavBar activeView={activeView} onViewChange={setActiveView} />
       </div>
 
       <GoogleConfigModal
