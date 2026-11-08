@@ -1,49 +1,56 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import './App.css';
+import './theme.css';
 import Header from './components/Layout/Header';
 import MobileNavBar from './components/Layout/MobileNavBar';
 import KanbanBoard from './components/Board/KanbanBoard';
 import CalendarView from './components/Calendar/CalendarView';
 import CalendarOverviewPanel from './components/Calendar/CalendarOverviewPanel';
 import GoogleConfigModal from './components/GoogleAuth/GoogleConfigModal';
-import CloudSyncModal from './components/CloudSync/CloudSyncModal';
 import TaskDetailModal from './components/Board/TaskDetailModal';
+import BoardSwitcher from './components/Boards/BoardSwitcher';
+import NewBoardModal from './components/Boards/NewBoardModal';
+import ShareBoardModal from './components/Boards/ShareBoardModal';
 import { useBoard } from './hooks/useBoard';
 import { useGoogleCalendar } from './hooks/useGoogleCalendar';
-import { useCloudSync } from './hooks/useCloudSync';
 import { useDriveSync } from './hooks/useDriveSync';
+import { useCloudBoards } from './hooks/useCloudBoards';
 import { useTaskReminders } from './hooks/useTaskReminders';
 import { storage } from './services/storage';
+import { firebaseEnabled } from './services/firebase';
+import { DEFAULT_THEME } from './config/variant';
 
 function App() {
   const [activeView, setActiveView] = useState('board');
   const [searchQuery, setSearchQuery] = useState('');
   const [showGoogleConfig, setShowGoogleConfig] = useState(false);
-  const [showCloudSync, setShowCloudSync] = useState(false);
+  const [showNewBoard, setShowNewBoard] = useState(false);
+  const [showShare, setShowShare] = useState(false);
   const [calendarModalState, setCalendarModalState] = useState(null);
-  const [theme, setTheme] = useState(() => {
-    const settings = storage.loadSettings();
-    return settings?.theme || 'dark';
-  });
+  const [theme, setTheme] = useState(() => storage.loadSettings()?.theme || DEFAULT_THEME);
 
   const boardHook = useBoard();
   const googleHook = useGoogleCalendar();
-  const cloudHook = useCloudSync({
+  const cloud = useCloudBoards({
     board: boardHook.board,
-    setBoard: boardHook.setBoard,
+    boardKey: boardHook.boardKey,
+    replaceBoard: boardHook.replaceBoard,
     showToast: boardHook.showToast,
   });
+  // Sem Firebase configurado, o quadro pessoal continua sincronizando pelo
+  // Google Drive como antes.
   const driveSyncStatus = useDriveSync(
     boardHook.board,
     boardHook.setBoard,
-    googleHook.isConnected,
-    boardHook.showToast
+    !firebaseEnabled && googleHook.isConnected,
+    boardHook.showToast,
   );
+  // Agenda so no quadro pessoal: o evento fica na agenda de quem criou.
+  const calendarActive = googleHook.isConnected && cloud.isPersonal;
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
-    const settings = storage.loadSettings() || {};
-    storage.saveSettings({ ...settings, theme });
+    storage.updateSettings({ theme });
   }, [theme]);
 
   const toggleTheme = useCallback(() => {
@@ -51,7 +58,7 @@ function App() {
   }, []);
 
   const handleSyncGoogle = useCallback(async (task) => {
-    if (!googleHook.isConnected || !task?.dueDate) return null;
+    if (!calendarActive || !task?.dueDate) return null;
     const googleId = await googleHook.syncTask(task);
     if (googleId) {
       boardHook.updateTask(task.id, { googleEventId: googleId, syncWithGoogle: true });
@@ -59,7 +66,7 @@ function App() {
       boardHook.showToast('Sincronizado com Google Agenda');
     }
     return googleId;
-  }, [googleHook, boardHook]);
+  }, [calendarActive, googleHook, boardHook]);
 
   const handlePersistTask = useCallback(async (taskId, updates) => {
     const currentTask = boardHook.findTask(taskId);
@@ -77,26 +84,17 @@ function App() {
           if (column.id === currentTask.columnId) {
             return { ...column, tasks: column.tasks.filter(task => task.id !== taskId) };
           }
-
           if (column.id === targetColumnId) {
             return { ...column, tasks: [...column.tasks, persistedTask] };
           }
-
           return column;
         })
       }));
-
-      if (mergedTask.syncWithGoogle && mergedTask.dueDate) {
-        await handleSyncGoogle(mergedTask);
-      } else if (currentTask.googleEventId && (!mergedTask.syncWithGoogle || !mergedTask.dueDate)) {
-        await googleHook.unsyncTask(currentTask.googleEventId);
-        googleHook.fetchEvents();
-        boardHook.updateTask(taskId, { googleEventId: null, syncWithGoogle: false });
-      }
-      return mergedTask;
+    } else {
+      boardHook.updateTask(taskId, persistedTask);
     }
 
-    boardHook.updateTask(taskId, persistedTask);
+    if (!calendarActive) return mergedTask;
     if (mergedTask.syncWithGoogle && mergedTask.dueDate) {
       await handleSyncGoogle(mergedTask);
     } else if (currentTask.googleEventId && (!mergedTask.syncWithGoogle || !mergedTask.dueDate)) {
@@ -105,7 +103,7 @@ function App() {
       boardHook.updateTask(taskId, { googleEventId: null, syncWithGoogle: false });
     }
     return mergedTask;
-  }, [boardHook, googleHook, handleSyncGoogle]);
+  }, [boardHook, googleHook, handleSyncGoogle, calendarActive]);
 
   const handleCreateTaskFromCalendar = useCallback(async (payload) => {
     const targetColumnId = payload.columnId || boardHook.board.columns[0]?.id;
@@ -133,11 +131,11 @@ function App() {
         reminderMinutes: 30,
         labels: [],
         subtasks: [],
-        syncWithGoogle: googleHook.isConnected,
+        syncWithGoogle: calendarActive,
         columnId: boardHook.board.columns[0]?.id || '',
       }
     });
-  }, [boardHook.board.columns, googleHook.isConnected]);
+  }, [boardHook.board.columns, calendarActive]);
 
   const handleCalendarTaskClick = useCallback((task) => {
     setCalendarModalState({ mode: 'edit', task });
@@ -145,7 +143,6 @@ function App() {
 
   const handleCalendarModalSave = useCallback(async (...args) => {
     if (!calendarModalState) return;
-
     if (calendarModalState.mode === 'create') {
       await handleCreateTaskFromCalendar(args[0]);
     } else {
@@ -153,16 +150,43 @@ function App() {
     }
   }, [calendarModalState, handleCreateTaskFromCalendar, handlePersistTask]);
 
-  const allTasks = boardHook.getAllTasks();
-  useTaskReminders(allTasks, true);
+  const allTasks = useMemo(() => boardHook.getAllTasks(), [boardHook.board]); // eslint-disable-line react-hooks/exhaustive-deps
+  const reminders = useTaskReminders(allTasks);
+
+  const handleRemindersClick = useCallback(async () => {
+    if (!reminders.supported) {
+      boardHook.showToast('No iPhone, adicione o app a Tela de Inicio para receber lembretes.', 'info');
+      return;
+    }
+    if (reminders.permission === 'granted') {
+      boardHook.showToast('Lembretes ativos enquanto o app estiver aberto ou em segundo plano.', 'info');
+      return;
+    }
+    const result = await reminders.requestPermission();
+    boardHook.showToast(result === 'granted' ? 'Lembretes ativados' : 'Permissao de notificacao negada nas configuracoes', result === 'granted' ? 'success' : 'error');
+  }, [reminders, boardHook]);
 
   const calendarItems = useMemo(() => {
     const taskItems = allTasks
       .filter(task => !!task.dueDate)
       .map(task => ({ ...task, eventType: 'task' }));
-    const googleItems = googleHook.googleEvents.map(event => ({ ...event, eventType: 'google' }));
+    const googleItems = calendarActive ? googleHook.googleEvents.map(event => ({ ...event, eventType: 'google' })) : [];
     return [...taskItems, ...googleItems];
-  }, [allTasks, googleHook.googleEvents]);
+  }, [allTasks, googleHook.googleEvents, calendarActive]);
+
+  const currentBoardTitle = cloud.isPersonal ? 'Meu Quadro' : boardHook.board.title;
+
+  const boardSwitcher = cloud.user ? (
+    <BoardSwitcher
+      boards={cloud.boards}
+      activeBoardId={cloud.activeBoardId}
+      currentTitle={currentBoardTitle}
+      onSelect={(id) => { cloud.selectBoard(id); setActiveView('board'); }}
+      onCreate={() => setShowNewBoard(true)}
+      onShare={() => setShowShare(true)}
+      canShare={!cloud.isPersonal && Boolean(cloud.activeMeta)}
+    />
+  ) : null;
 
   return (
     <div className="app">
@@ -176,10 +200,19 @@ function App() {
           onToggleTheme={toggleTheme}
           isGoogleConnected={googleHook.isConnected}
           onGoogleClick={() => setShowGoogleConfig(true)}
-          cloudSyncStatus={cloudHook.status}
-          isCloudSyncEnabled={cloudHook.config.enabled}
-          onCloudClick={() => setShowCloudSync(true)}
+          showCalendarButton={cloud.isPersonal}
+          cloud={cloud}
+          boardSwitcher={boardSwitcher}
+          onRemindersClick={handleRemindersClick}
+          remindersEnabled={reminders.permission === 'granted'}
         />
+
+        {cloud.enabled && cloud.authReady && !cloud.user && (
+          <div className="signin-banner">
+            <span>Entre com sua conta Google para sincronizar PC e iPhone e usar quadros compartilhados.</span>
+            <button className="btn btn-primary btn-sm" onClick={cloud.signIn}>Entrar com Google</button>
+          </div>
+        )}
 
         <div className="app-content">
           {activeView === 'board' ? (
@@ -202,7 +235,7 @@ function App() {
                 onReorderColumns={boardHook.reorderColumns}
                 onConvertSubtaskToTask={boardHook.convertSubtaskToTask}
                 onMoveSubtaskToTask={boardHook.moveSubtaskToTask}
-                isGoogleConnected={googleHook.isConnected}
+                isGoogleConnected={calendarActive}
                 onSyncGoogle={handleSyncGoogle}
                 searchQuery={searchQuery}
               />
@@ -221,7 +254,7 @@ function App() {
           ) : (
             <CalendarView
               tasks={allTasks}
-              googleEvents={googleHook.googleEvents}
+              googleEvents={calendarActive ? googleHook.googleEvents : []}
               onTaskClick={handleCalendarTaskClick}
               onDateClick={handleDateClick}
             />
@@ -239,16 +272,24 @@ function App() {
         isConnected={googleHook.isConnected}
         onSignIn={googleHook.signIn}
         onSignOut={googleHook.signOut}
-        driveSyncStatus={driveSyncStatus}
+        driveSyncStatus={firebaseEnabled ? 'idle' : driveSyncStatus}
       />
 
-      <CloudSyncModal
-        isOpen={showCloudSync}
-        onClose={() => setShowCloudSync(false)}
-        config={cloudHook.config}
-        status={cloudHook.status}
-        onSave={cloudHook.updateConfig}
-        onSyncNow={cloudHook.syncNow}
+      <NewBoardModal
+        isOpen={showNewBoard}
+        onCreate={cloud.createBoard}
+        onClose={(createdId) => { setShowNewBoard(false); if (createdId) setShowShare(true); }}
+      />
+
+      <ShareBoardModal
+        isOpen={showShare}
+        onClose={() => setShowShare(false)}
+        meta={cloud.activeMeta}
+        boardTitle={boardHook.board.title}
+        myEmail={cloud.user?.email}
+        onInvite={cloud.invite}
+        onRemove={cloud.removePerson}
+        onDelete={cloud.deleteBoard}
       />
 
       {calendarModalState && (
@@ -264,14 +305,13 @@ function App() {
           onAddSubtask={boardHook.addSubtask}
           onToggleSubtask={boardHook.toggleSubtask}
           onDeleteSubtask={boardHook.deleteSubtask}
-          isGoogleConnected={googleHook.isConnected}
+          isGoogleConnected={calendarActive}
           onSyncGoogle={handleSyncGoogle}
         />
       )}
 
-      {/* Toasts */}
       {boardHook.toasts.length > 0 && (
-        <div className="toast-container">
+        <div className="toast-container" role="status" aria-live="polite">
           {boardHook.toasts.map(t => (
             <div key={t.id} className={`toast ${t.type}`}>{t.message}</div>
           ))}

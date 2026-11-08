@@ -1,39 +1,76 @@
-const STORAGE_KEY = 'taskflow-data';
-const SETTINGS_KEY = 'taskflow-settings';
+import { STORAGE_PREFIX } from '../config/variant';
+
+const BOARD_KEY = `${STORAGE_PREFIX}-data`;
+const SETTINGS_KEY = `${STORAGE_PREFIX}-settings`;
+const SYNC_KEY_PREFIX = `${STORAGE_PREFIX}-sync-`;
+
+function read(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+// Depois de sair da conta nada mais e gravado ate a pagina recarregar.
+let locked = false;
+
+function write(key, value) {
+  if (locked) return;
+  try {
+    if (value === null || value === undefined) localStorage.removeItem(key);
+    else localStorage.setItem(key, JSON.stringify(value));
+  } catch (e) {
+    console.error('Erro ao salvar dados locais:', e);
+  }
+}
 
 export const storage = {
-  saveBoard(data) {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    } catch (e) {
-      console.error('Erro ao salvar dados:', e);
-    }
+  saveBoard(data, boardKey = 'personal') {
+    write(boardKey === 'personal' ? BOARD_KEY : `${BOARD_KEY}-${boardKey}`, data);
   },
 
-  loadBoard() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      return raw ? JSON.parse(raw) : null;
-    } catch (e) {
-      console.error('Erro ao carregar dados:', e);
-      return null;
-    }
+  loadBoard(boardKey = 'personal') {
+    return read(boardKey === 'personal' ? BOARD_KEY : `${BOARD_KEY}-${boardKey}`);
   },
 
   saveSettings(settings) {
-    try {
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-    } catch (e) {
-      console.error('Erro ao salvar configurações:', e);
-    }
+    write(SETTINGS_KEY, settings);
   },
 
   loadSettings() {
+    return read(SETTINGS_KEY);
+  },
+
+  updateSettings(updates) {
+    const next = { ...(read(SETTINGS_KEY) || {}), ...updates };
+    write(SETTINGS_KEY, next);
+    return next;
+  },
+
+  // Estado de sincronizacao por quadro: ultima versao conhecida do servidor
+  // (base do merge) e se ha edicoes locais ainda nao enviadas. Persistido para
+  // que edicoes feitas offline sobrevivam a um fechamento do app.
+  loadSyncState(boardId) {
+    return read(SYNC_KEY_PREFIX + boardId);
+  },
+
+  saveSyncState(boardId, state) {
+    write(SYNC_KEY_PREFIX + boardId, state);
+  },
+
+  // Inclui o quadro pessoal: ele esta salvo na nuvem, e deixa-lo no aparelho
+  // faria o proximo usuario que entrar aqui herdar (e mesclar) estas tarefas.
+  clearAllForSignOut() {
+    locked = true;
     try {
-      const raw = localStorage.getItem(SETTINGS_KEY);
-      return raw ? JSON.parse(raw) : null;
-    } catch (e) {
-      return null;
+      Object.keys(localStorage)
+        .filter(key => key === BOARD_KEY || key.startsWith(SYNC_KEY_PREFIX) || key.startsWith(`${BOARD_KEY}-`)
+          || key.startsWith(`${STORAGE_PREFIX}-gcal-`) || key.startsWith(`${STORAGE_PREFIX}-reminders-`))
+        .forEach(key => localStorage.removeItem(key));
+    } catch {
+      // armazenamento indisponivel (modo privado): nada a limpar
     }
   },
 
@@ -48,21 +85,4 @@ export const storage = {
     a.click();
     URL.revokeObjectURL(url);
   },
-
-  importData(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const data = JSON.parse(e.target.result);
-          this.saveBoard(data);
-          resolve(data);
-        } catch (err) {
-          reject(err);
-        }
-      };
-      reader.onerror = reject;
-      reader.readAsText(file);
-    });
-  }
 };

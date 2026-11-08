@@ -1,5 +1,12 @@
 name: Deploy to GitHub Pages
 
+# O mesmo codigo e publicado em dois repositorios:
+#   arthurplinioo/kanban       -> versao padrao
+#   arthurplinioo/kanban-rosa  -> versao rosa (variavel VITE_VARIANT=rosa)
+# A configuracao do Firebase vem das variaveis do repositorio (nao sao
+# segredos: a chave web do Firebase e publica; quem protege os dados sao as
+# regras do Firestore em firestore.rules).
+
 on:
   push:
     branches: [main]
@@ -17,12 +24,20 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      VITE_VARIANT: ${{ vars.VITE_VARIANT }}
+      VITE_FIREBASE_API_KEY: ${{ vars.VITE_FIREBASE_API_KEY }}
+      VITE_FIREBASE_AUTH_DOMAIN: ${{ vars.VITE_FIREBASE_AUTH_DOMAIN }}
+      VITE_FIREBASE_PROJECT_ID: ${{ vars.VITE_FIREBASE_PROJECT_ID }}
+      VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID }}
+      VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-      - run: npm install --legacy-peer-deps
+          node-version: 22
+      - run: npm install --legacy-peer-deps --no-audit --no-fund
+      - run: npm test
       - run: npm run build
       - uses: actions/upload-pages-artifact@v3
         with:

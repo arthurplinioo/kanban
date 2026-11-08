@@ -1,0 +1,92 @@
+rules_version = '2';
+
+// Unica colecao: boards/{boardId}.
+// - Quadro pessoal: id "personal_<uid>", so o dono le e escreve.
+// - Quadro compartilhado: le/escreve quem esta em memberEmails (conta Google
+//   com e-mail verificado). O link sozinho nao da acesso a nada.
+// - So o dono muda a lista de membros; um membro pode apenas se remover.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null
+        && request.auth.token.email is string
+        && request.auth.token.email_verified == true;
+    }
+
+    function myEmail() {
+      return request.auth.token.email.lower();
+    }
+
+    function isOwner(data) {
+      return signedIn() && data.ownerUid == request.auth.uid;
+    }
+
+    function isMember(data) {
+      return signedIn() && (data.ownerUid == request.auth.uid || myEmail() in data.memberEmails);
+    }
+
+    function validBoard(d) {
+      return d.keys().hasOnly(['title', 'type', 'ownerUid', 'ownerEmail', 'memberEmails',
+                               'columns', 'tasks', 'createdAt', 'updatedAt', 'updatedBy'])
+        && d.keys().hasAll(['title', 'type', 'ownerUid', 'ownerEmail', 'memberEmails', 'columns', 'tasks'])
+        && d.title is string && d.title.size() <= 120
+        && d.type in ['personal', 'shared']
+        && d.ownerUid is string
+        && d.ownerEmail is string
+        && d.memberEmails is list && d.memberEmails.size() >= 1 && d.memberEmails.size() <= 50
+        && d.columns is map && d.columns.size() <= 50
+        && d.tasks is map && d.tasks.size() <= 2000
+        && (!('updatedBy' in d) || d.updatedBy == myEmail());
+    }
+
+    function unchanged(field) {
+      return request.resource.data.get(field, null) == resource.data.get(field, null);
+    }
+
+    match /boards/{boardId} {
+      // O proprio quadro pessoal pode ser lido mesmo antes de existir
+      // (o app escuta o documento e o cria no primeiro login).
+      allow read: if (signedIn() && boardId == 'personal_' + request.auth.uid)
+        || (resource != null && isMember(resource.data));
+
+      allow create: if signedIn()
+        && validBoard(request.resource.data)
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.ownerEmail == myEmail()
+        && (
+          (request.resource.data.type == 'personal'
+            && boardId == 'personal_' + request.auth.uid
+            && request.resource.data.memberEmails == [myEmail()])
+          ||
+          (request.resource.data.type == 'shared'
+            && boardId.size() >= 16
+            && myEmail() in request.resource.data.memberEmails)
+        );
+
+      allow update: if isMember(resource.data)
+        && validBoard(request.resource.data)
+        && unchanged('ownerUid') && unchanged('ownerEmail') && unchanged('type') && unchanged('createdAt')
+        && (
+          unchanged('memberEmails')
+          ||
+          // dono gerencia convidados (sem se remover)
+          (isOwner(resource.data)
+            && resource.data.type == 'shared'
+            && resource.data.ownerEmail in request.resource.data.memberEmails)
+          ||
+          // convidado sai do quadro: remove apenas o proprio e-mail
+          (!isOwner(resource.data)
+            && resource.data.type == 'shared'
+            && request.resource.data.memberEmails.toSet()
+                 == resource.data.memberEmails.toSet().difference([myEmail()].toSet()))
+        );
+
+      allow delete: if isOwner(resource.data) && resource.data.type == 'shared';
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

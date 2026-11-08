@@ -1,38 +1,39 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { generateId } from '../utils/idGenerator';
 import { storage } from '../services/storage';
+import { createDefaultBoard, sanitizeBoard } from '../utils/boardModel';
 
 const COLUMN_COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#ef4444', '#f59e0b', '#10b981', '#06b6d4', '#3b82f6'];
 
-const defaultBoard = {
-  title: 'Meu Quadro',
-  columns: [
-    {
-      id: generateId(), title: 'A Fazer', color: '#6366f1', tasks: [
-        { id: generateId(), title: 'Bem-vindo ao TaskFlow!', subtitle: 'Seu organizador Kanban', description: 'Arraste tarefas entre colunas, adicione subtarefas e muito mais.', priority: 'low', dueDate: null, subtasks: [{ id: generateId(), text: 'Explorar o quadro', completed: false }, { id: generateId(), text: 'Criar uma tarefa', completed: false }], completed: false, googleEventId: null, syncWithGoogle: false, createdAt: new Date().toISOString(), labels: [] },
-      ]
-    },
-    { id: generateId(), title: 'Em Progresso', color: '#f59e0b', tasks: [] },
-    { id: generateId(), title: 'Concluído', color: '#10b981', tasks: [] },
-  ]
-};
-
 export function useBoard() {
   const [board, setBoard] = useState(() => {
-    const saved = storage.loadBoard();
-    return saved || defaultBoard;
+    const saved = storage.loadBoard('personal');
+    return saved ? sanitizeBoard(saved) : createDefaultBoard();
   });
+  // Qual quadro esta carregado ('personal' ou id de um quadro compartilhado);
+  // define onde a copia local (cache offline) e gravada.
+  const [boardKey, setBoardKey] = useState('personal');
   const [toasts, setToasts] = useState([]);
   const saveTimer = useRef(null);
+  const latest = useRef({ board, boardKey });
+  latest.current = { board, boardKey };
 
-  // Auto-save debounced
   useEffect(() => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      storage.saveBoard(board);
+      storage.saveBoard(board, boardKey);
     }, 300);
     return () => clearTimeout(saveTimer.current);
-  }, [board]);
+  }, [board, boardKey]);
+
+  // Troca o quadro exibido. Grava o atual na hora para nao perder os
+  // ultimos 300 ms de edicao do debounce.
+  const replaceBoard = useCallback((nextBoard, nextKey) => {
+    const { board: currentBoard, boardKey: currentKey } = latest.current;
+    if (nextKey && nextKey !== currentKey) storage.saveBoard(currentBoard, currentKey);
+    if (nextKey) setBoardKey(nextKey);
+    setBoard(nextBoard);
+  }, []);
 
   const showToast = useCallback((message, type = 'success') => {
     const id = generateId();
@@ -340,6 +341,6 @@ export function useBoard() {
     convertSubtaskToTask, moveSubtaskToTask,
     moveTask, reorderTask, reorderColumns,
     getAllTasks, findTask, showToast,
-    setBoard,
+    setBoard, replaceBoard, boardKey,
   };
 }

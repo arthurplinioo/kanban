@@ -1,4 +1,60 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { APP_NAME } from '../../config/variant';
+
+const STATUS_LABEL = {
+  synced: 'Sincronizado',
+  syncing: 'Sincronizando...',
+  offline: 'Offline - salvo no aparelho',
+  error: 'Erro ao sincronizar',
+  idle: 'Entrar para sincronizar',
+  local: 'Somente neste aparelho',
+};
+
+function AccountMenu({ cloud }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = (event) => { if (ref.current && !ref.current.contains(event.target)) setOpen(false); };
+    document.addEventListener('pointerdown', close);
+    return () => document.removeEventListener('pointerdown', close);
+  }, [open]);
+
+  if (!cloud.enabled) return null;
+
+  if (!cloud.user) {
+    return (
+      <button className="btn btn-primary btn-sm header-signin" onClick={cloud.signIn} disabled={!cloud.authReady}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+        Entrar
+      </button>
+    );
+  }
+
+  const initial = (cloud.user.displayName || cloud.user.email || '?').slice(0, 1).toUpperCase();
+  return (
+    <div className="dropdown" ref={ref}>
+      <button className={`header-avatar sync-${cloud.status}`} onClick={() => setOpen(v => !v)} title={STATUS_LABEL[cloud.status]}>
+        {cloud.user.photoURL
+          ? <img src={cloud.user.photoURL} alt="" referrerPolicy="no-referrer" />
+          : <span>{initial}</span>}
+        <i className="header-avatar-dot" />
+      </button>
+      {open && (
+        <div className="dropdown-menu account-menu">
+          <div className="account-menu-head">
+            <strong>{cloud.user.displayName || 'Conta Google'}</strong>
+            <span>{cloud.user.email}</span>
+            <span className={`account-status sync-${cloud.status}`}>{STATUS_LABEL[cloud.status]}</span>
+          </div>
+          <div className="dropdown-divider" />
+          <button className="dropdown-item danger" onClick={cloud.signOut}>Sair desta conta</button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function Header({
   activeView,
@@ -9,19 +65,20 @@ export default function Header({
   onToggleTheme,
   isGoogleConnected,
   onGoogleClick,
-  cloudSyncStatus,
-  isCloudSyncEnabled,
-  onCloudClick,
+  showCalendarButton,
+  cloud,
+  boardSwitcher,
+  onRemindersClick,
+  remindersEnabled,
 }) {
-  const cloudState = cloudSyncStatus?.state || 'idle';
-
   return (
     <header className="header">
       <div className="header-left">
         <div className="header-logo">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-          TaskFlow
+          <span className="header-logo-text">{APP_NAME}</span>
         </div>
+        {boardSwitcher}
         <nav className="header-nav">
           <button className={`header-nav-btn ${activeView === 'board' ? 'active' : ''}`} onClick={() => onViewChange('board')}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
@@ -37,32 +94,23 @@ export default function Header({
       <div className="header-right">
         <div className="search-container">
           <svg className="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input className="search-input" type="text" placeholder="Buscar tarefas..." value={searchQuery} onChange={e => onSearchChange(e.target.value)} />
+          <input className="search-input" type="search" placeholder="Buscar tarefas..." value={searchQuery} onChange={e => onSearchChange(e.target.value)} />
         </div>
 
-        <button className={`header-icon-btn ${isGoogleConnected ? 'google-connected' : ''}`} onClick={onGoogleClick}
-          title={isGoogleConnected ? 'Google Agenda conectado' : 'Conectar Google Agenda'}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-            {isGoogleConnected && <polyline points="9 16 11 18 15 14" />}
-          </svg>
+        <button className={`header-icon-btn ${remindersEnabled ? 'google-connected' : ''}`} onClick={onRemindersClick}
+          title={remindersEnabled ? 'Lembretes ativos' : 'Ativar lembretes'}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
         </button>
 
-        <button
-          className={`header-icon-btn cloud-sync-btn ${isCloudSyncEnabled ? 'cloud-enabled' : ''} ${cloudState}`}
-          onClick={onCloudClick}
-          title={cloudSyncStatus?.message || 'Configurar Cloud Sync'}
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M17.5 19H7a5 5 0 0 1-.8-9.94A7 7 0 0 1 19.5 11.5 3.75 3.75 0 0 1 17.5 19z" />
-            {cloudState === 'synced' && <polyline points="8 13 11 16 16 10" />}
-            {cloudState === 'conflict' && <line x1="12" y1="9" x2="12" y2="14" />}
-            {cloudState === 'conflict' && <line x1="12" y1="17" x2="12.01" y2="17" />}
-          </svg>
-          {cloudState === 'syncing' && <span className="header-status-dot syncing" />}
-          {cloudState === 'error' && <span className="header-status-dot error" />}
-          {cloudState === 'conflict' && <span className="header-status-dot warning" />}
-        </button>
+        {showCalendarButton && (
+          <button className={`header-icon-btn ${isGoogleConnected ? 'google-connected' : ''}`} onClick={onGoogleClick}
+            title={isGoogleConnected ? 'Google Agenda conectado' : 'Conectar Google Agenda'}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+              {isGoogleConnected && <polyline points="9 16 11 18 15 14" />}
+            </svg>
+          </button>
+        )}
 
         <button className="header-icon-btn" onClick={onToggleTheme} title={theme === 'dark' ? 'Modo claro' : 'Modo escuro'}>
           {theme === 'dark' ? (
@@ -71,6 +119,8 @@ export default function Header({
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
           )}
         </button>
+
+        <AccountMenu cloud={cloud} />
       </div>
     </header>
   );

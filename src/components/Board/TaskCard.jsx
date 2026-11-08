@@ -6,7 +6,7 @@ import DraggableSubtask from './DraggableSubtask';
 
 const priorityLabels = { low: 'Baixa', medium: 'Média', high: 'Alta', urgent: 'Urgente' };
 
-export default function TaskCard({ task, onClick, onToggleComplete, onToggleSubtask, onAddSubtask, activeDragType, activeSubtaskParentId, dragDisabled = false }) {
+export default function TaskCard({ task, onClick, onToggleComplete, onToggleSubtask, onAddSubtask, activeDragType, activeSubtaskParentId, dragDisabled = false, touchFriendly = false }) {
   const [isSubtasksExpanded, setIsSubtasksExpanded] = useState(false);
   const [newSubtask, setNewSubtask] = useState('');
 
@@ -41,7 +41,7 @@ export default function TaskCard({ task, onClick, onToggleComplete, onToggleSubt
       ref={setNodeRef}
       style={style}
       {...dragProps}
-      className={`task-card ${dragDisabled ? 'no-drag' : ''} ${isDragging ? 'is-dragging' : ''} ${task.completed ? 'completed' : ''} ${isSubtaskDropTarget ? 'subtask-drop-target' : ''}`}
+      className={`task-card ${touchFriendly ? 'touch' : ''} ${dragDisabled ? 'no-drag' : ''} ${isDragging ? 'is-dragging' : ''} ${task.completed ? 'completed' : ''} ${isSubtaskDropTarget ? 'subtask-drop-target' : ''}`}
       onClick={() => onClick?.(task)}
     >
       {task.labels?.[0] && <div className="task-card-color-bar" style={{ background: task.labels[0] }} />}

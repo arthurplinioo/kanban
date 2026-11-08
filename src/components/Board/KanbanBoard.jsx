@@ -189,6 +189,11 @@ export default function KanbanBoard({ board, onUpdateBoardTitle, onAddColumn, on
           onToggleComplete={onToggleComplete}
           onToggleSubtask={onToggleSubtask}
           onAddSubtask={onAddSubtask}
+          onMoveTask={onMoveTask}
+          onReorderTask={onReorderTask}
+          onConvertSubtaskToTask={onConvertSubtaskToTask}
+          onMoveSubtaskToTask={onMoveSubtaskToTask}
+          dragEnabled={!searchQuery}
         />
       ) : (
         <DndContext sensors={sensors} collisionDetection={closestCorners}

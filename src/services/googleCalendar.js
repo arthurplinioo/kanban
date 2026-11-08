@@ -1,5 +1,27 @@
-const SCOPES = 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/drive.appdata';
+import { firebaseEnabled } from './firebase';
+import { STORAGE_PREFIX } from '../config/variant';
+
+// Com Firebase ativo o quadro sincroniza pelo Firestore, entao o Drive nao e
+// mais necessario: pedir so o minimo (principio do menor privilegio).
+const SCOPES = firebaseEnabled
+  ? 'https://www.googleapis.com/auth/calendar.events'
+  : 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive.appdata';
 const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest';
+const TOKEN_KEY = `${STORAGE_PREFIX}-gcal-token`;
+const WAS_CONNECTED_KEY = `${STORAGE_PREFIX}-gcal-connected`;
+
+// O token da Agenda dura ~1h e o Google nao o renova sem nova interacao.
+// Guardamos ate expirar para que reabrir o app (comum no iPhone) nao exija
+// reconectar a cada vez.
+function loadCachedToken() {
+  try {
+    const cached = JSON.parse(localStorage.getItem(TOKEN_KEY) || 'null');
+    if (cached?.access_token && cached.expiresAt > Date.now() + 60 * 1000) return cached;
+  } catch {
+    // ignorado
+  }
+  return null;
+}
 
 let gapiInited = false;
 let gisInited = false;
@@ -49,17 +71,46 @@ export const googleCalendar = {
   isSignedIn: false,
   onSignInChange: null,
 
+  get wasConnected() {
+    return localStorage.getItem(WAS_CONNECTED_KEY) === '1';
+  },
+
   async init(clientId) {
     if (!clientId) return false;
     this.clientId = clientId;
     try {
       await this._loadGapi();
       await this._loadGis();
+      const cached = loadCachedToken();
+      if (cached) {
+        window.gapi.client.setToken({ access_token: cached.access_token });
+        this._scheduleExpiry(cached.expiresAt);
+        this.isSignedIn = true;
+        this.onSignInChange?.(true);
+      }
       return true;
     } catch (error) {
       console.error('Google Calendar init error:', error);
       return false;
     }
+  },
+
+  _scheduleExpiry(expiresAt) {
+    clearTimeout(this._expiryTimer);
+    this._expiryTimer = setTimeout(() => this._expire(), Math.max(0, expiresAt - Date.now() - 30 * 1000));
+  },
+
+  _expire() {
+    localStorage.removeItem(TOKEN_KEY);
+    window.gapi?.client?.setToken(null);
+    if (this.isSignedIn) {
+      this.isSignedIn = false;
+      this.onSignInChange?.(false);
+    }
+  },
+
+  _handleApiError(error) {
+    if (error?.status === 401 || error?.result?.error?.code === 401) this._expire();
   },
 
   _loadGapi() {
@@ -106,6 +157,14 @@ export const googleCalendar = {
                 console.error(response);
                 return;
               }
+              const expiresAt = Date.now() + Number(response.expires_in || 3600) * 1000;
+              try {
+                localStorage.setItem(TOKEN_KEY, JSON.stringify({ access_token: response.access_token, expiresAt }));
+                localStorage.setItem(WAS_CONNECTED_KEY, '1');
+              } catch {
+                // sem armazenamento: funciona so nesta sessao
+              }
+              this._scheduleExpiry(expiresAt);
               this.isSignedIn = true;
               this.onSignInChange?.(true);
             },
@@ -123,16 +182,18 @@ export const googleCalendar = {
 
   signIn() {
     if (!tokenClient) return;
-    if (window.gapi.client.getToken() === null) tokenClient.requestAccessToken({ prompt: 'consent' });
-    else tokenClient.requestAccessToken({ prompt: '' });
+    tokenClient.requestAccessToken({ prompt: this.wasConnected ? '' : 'consent' });
   },
 
   signOut() {
     const token = window.gapi?.client?.getToken();
-    if (token) {
+    if (token?.access_token) {
       window.google.accounts.oauth2.revoke(token.access_token);
-      window.gapi.client.setToken('');
     }
+    clearTimeout(this._expiryTimer);
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(WAS_CONNECTED_KEY);
+    window.gapi?.client?.setToken(null);
     this.isSignedIn = false;
     this.onSignInChange?.(false);
   },
@@ -162,6 +223,7 @@ export const googleCalendar = {
         color: event.colorId || null,
       }));
     } catch (error) {
+      this._handleApiError(error);
       console.error('Erro ao listar eventos:', error);
       return [];
     }
@@ -176,6 +238,7 @@ export const googleCalendar = {
       });
       return response.result.id;
     } catch (error) {
+      this._handleApiError(error);
       console.error('Erro ao criar evento:', error);
       return null;
     }
@@ -191,6 +254,7 @@ export const googleCalendar = {
       });
       return true;
     } catch (error) {
+      this._handleApiError(error);
       console.error('Erro ao atualizar evento:', error);
       return false;
     }
@@ -205,6 +269,7 @@ export const googleCalendar = {
       });
       return true;
     } catch (error) {
+      this._handleApiError(error);
       console.error('Erro ao deletar evento:', error);
       return false;
     }
