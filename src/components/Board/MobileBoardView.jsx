@@ -71,6 +71,7 @@ function MobileList({ column, children, isDragging }) {
 export default function MobileBoardView({
   columns, onAddTask, onUpdateColumn, onDeleteColumn, onAddColumn,
   onTaskClick, onToggleComplete, onToggleSubtask, onAddSubtask,
+  onDeleteTask, onDeleteSubtask, onClearCompleted,
   onMoveTask, onReorderTask, onConvertSubtaskToTask, onMoveSubtaskToTask, dragEnabled,
 }) {
   const [activeColumnId, setActiveColumnId] = useState(columns[0]?.id || '');
@@ -289,6 +290,9 @@ export default function MobileBoardView({
                       ))}
                     </div>
                   )}
+                  <button className="dropdown-item" onClick={() => { onClearCompleted?.(activeColumn.id); setShowMenu(false); }}>
+                    Excluir concluidas
+                  </button>
                   <div className="dropdown-divider" />
                   <button className="dropdown-item danger" onClick={() => { onDeleteColumn(activeColumn.id); setShowMenu(false); }}>
                     Excluir categoria
@@ -324,6 +328,8 @@ export default function MobileBoardView({
                     onToggleComplete={onToggleComplete}
                     onToggleSubtask={onToggleSubtask}
                     onAddSubtask={onAddSubtask}
+                    onDelete={onDeleteTask}
+                    onDeleteSubtask={onDeleteSubtask}
                   />
                 ))}
               </MobileList>

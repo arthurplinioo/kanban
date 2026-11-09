@@ -51,10 +51,32 @@ export function useBoard() {
     setBoard(nextBoard);
   }, []);
 
-  const showToast = useCallback((message, type = 'success') => {
+  const dismissToast = useCallback((id) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  }, []);
+
+  // `action` = { label, onClick }: botao no aviso (ex.: Desfazer), que fica mais tempo na tela.
+  const showToast = useCallback((message, type = 'success', action = null) => {
     const id = generateId();
-    setToasts(prev => [...prev, { id, message, type }]);
-    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
+    setToasts(prev => [...prev, { id, message, type, action }]);
+    setTimeout(() => dismissToast(id), action ? 6000 : 3000);
+  }, [dismissToast]);
+
+  // Devolve ao quadro uma tarefa excluida, na mesma posicao (se a coluna ainda existir).
+  const restoreTask = useCallback((task, columnId, index) => {
+    setBoard(prev => {
+      if (prev.columns.some(c => c.tasks.some(t => t.id === task.id))) return prev;
+      const targetId = prev.columns.some(c => c.id === columnId) ? columnId : prev.columns[0]?.id;
+      return {
+        ...prev,
+        columns: prev.columns.map(c => {
+          if (c.id !== targetId) return c;
+          const tasks = [...c.tasks];
+          tasks.splice(Math.min(index, tasks.length), 0, { ...task, columnId: targetId });
+          return { ...c, tasks };
+        }),
+      };
+    });
   }, []);
 
   const updateBoardTitle = useCallback((title) => {
@@ -127,6 +149,10 @@ export function useBoard() {
   }, []);
 
   const deleteTask = useCallback((taskId) => {
+    const column = latest.current.board.columns.find(c => c.tasks.some(t => t.id === taskId));
+    if (!column) return;
+    const index = column.tasks.findIndex(t => t.id === taskId);
+    const removed = column.tasks[index];
     setBoard(prev => ({
       ...prev,
       columns: prev.columns.map(c => ({
@@ -134,8 +160,27 @@ export function useBoard() {
         tasks: c.tasks.filter(t => t.id !== taskId),
       })),
     }));
-    showToast('Tarefa removida');
-  }, [showToast]);
+    showToast('Tarefa excluida', 'info', { label: 'Desfazer', onClick: () => restoreTask(removed, column.id, index) });
+  }, [showToast, restoreTask]);
+
+  // Exclui todas as tarefas concluidas de uma coluna (com desfazer).
+  const clearCompleted = useCallback((columnId) => {
+    const column = latest.current.board.columns.find(c => c.id === columnId);
+    const done = (column?.tasks || []).map((t, index) => ({ t, index })).filter(({ t }) => t.completed);
+    if (done.length === 0) {
+      showToast('Nenhuma tarefa concluida nesta categoria', 'info');
+      return;
+    }
+    const ids = new Set(done.map(({ t }) => t.id));
+    setBoard(prev => ({
+      ...prev,
+      columns: prev.columns.map(c => (c.id === columnId ? { ...c, tasks: c.tasks.filter(t => !ids.has(t.id)) } : c)),
+    }));
+    showToast(`${done.length} concluida${done.length > 1 ? 's' : ''} excluida${done.length > 1 ? 's' : ''}`, 'info', {
+      label: 'Desfazer',
+      onClick: () => done.forEach(({ t, index }) => restoreTask(t, columnId, index)),
+    });
+  }, [showToast, restoreTask]);
 
   const toggleTaskComplete = useCallback((taskId) => {
     setBoard(prev => ({
@@ -177,6 +222,10 @@ export function useBoard() {
   }, []);
 
   const deleteSubtask = useCallback((taskId, subtaskId) => {
+    const parent = latest.current.board.columns.flatMap(c => c.tasks).find(t => t.id === taskId);
+    const index = (parent?.subtasks || []).findIndex(s => s.id === subtaskId);
+    if (index < 0) return;
+    const removed = parent.subtasks[index];
     setBoard(prev => ({
       ...prev,
       columns: prev.columns.map(c => ({
@@ -186,7 +235,22 @@ export function useBoard() {
         ),
       })),
     }));
-  }, []);
+    showToast('Subtarefa excluida', 'info', {
+      label: 'Desfazer',
+      onClick: () => setBoard(prev => ({
+        ...prev,
+        columns: prev.columns.map(c => ({
+          ...c,
+          tasks: c.tasks.map(t => {
+            if (t.id !== taskId || (t.subtasks || []).some(s => s.id === subtaskId)) return t;
+            const subtasks = [...(t.subtasks || [])];
+            subtasks.splice(Math.min(index, subtasks.length), 0, removed);
+            return { ...t, subtasks };
+          }),
+        })),
+      })),
+    });
+  }, [showToast]);
 
   const convertSubtaskToTask = useCallback((parentTaskId, subtaskId, targetColumnId, beforeTaskId = null) => {
     setBoard(prev => {
@@ -352,7 +416,7 @@ export function useBoard() {
   return {
     board, toasts, updateBoardTitle,
     addColumn, updateColumn, deleteColumn,
-    addTask, updateTask, deleteTask, toggleTaskComplete,
+    addTask, updateTask, deleteTask, toggleTaskComplete, clearCompleted, dismissToast,
     addSubtask, toggleSubtask, deleteSubtask,
     convertSubtaskToTask, moveSubtaskToTask,
     moveTask, reorderTask, reorderColumns,

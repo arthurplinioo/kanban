@@ -3,10 +3,11 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { isOverdue, isDueToday, formatTaskSchedule } from '../../utils/dateUtils';
 import DraggableSubtask from './DraggableSubtask';
+import { stopDrag, TrashIcon } from './cardActions';
 
 const priorityLabels = { low: 'Baixa', medium: 'Média', high: 'Alta', urgent: 'Urgente' };
 
-export default function TaskCard({ task, onClick, onToggleComplete, onToggleSubtask, onAddSubtask, activeDragType, activeSubtaskParentId, dragDisabled = false, touchFriendly = false }) {
+export default function TaskCard({ task, onClick, onToggleComplete, onToggleSubtask, onAddSubtask, onDelete, onDeleteSubtask, activeDragType, activeSubtaskParentId, dragDisabled = false, touchFriendly = false }) {
   const [isSubtasksExpanded, setIsSubtasksExpanded] = useState(false);
   const [newSubtask, setNewSubtask] = useState('');
 
@@ -50,6 +51,19 @@ export default function TaskCard({ task, onClick, onToggleComplete, onToggleSubt
           <div className="task-card-title">{task.title}</div>
           {task.subtitle && <div className="task-card-subtitle">{task.subtitle}</div>}
         </div>
+        {onDelete && (
+          <button
+            type="button"
+            className="task-card-delete"
+            aria-label="Excluir tarefa"
+            title="Excluir tarefa"
+            onMouseDown={stopDrag}
+            onTouchStart={stopDrag}
+            onClick={e => { e.stopPropagation(); onDelete(task.id); }}
+          >
+            <TrashIcon size={15} />
+          </button>
+        )}
         <div
           className={`task-card-checkbox ${task.completed ? 'checked' : ''}`}
           onClick={e => { e.stopPropagation(); onToggleComplete?.(task.id); }}
@@ -90,7 +104,7 @@ export default function TaskCard({ task, onClick, onToggleComplete, onToggleSubt
       {totalSubs > 0 && isSubtasksExpanded && (
         <div className="task-card-subtasks-list" onClick={(e) => e.stopPropagation()}>
           {task.subtasks.map(st => (
-            <DraggableSubtask key={st.id} subtask={st} parentTaskId={task.id} onToggle={onToggleSubtask} dragDisabled={dragDisabled} />
+            <DraggableSubtask key={st.id} subtask={st} parentTaskId={task.id} onToggle={onToggleSubtask} onDelete={onDeleteSubtask} dragDisabled={dragDisabled} />
           ))}
         </div>
       )}

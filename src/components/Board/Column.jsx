@@ -6,7 +6,7 @@ import TaskCard from './TaskCard';
 
 const COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#ef4444', '#f59e0b', '#10b981', '#06b6d4', '#3b82f6', '#f97316', '#14b8a6'];
 
-export default function Column({ column, onAddTask, onUpdateColumn, onDeleteColumn, onTaskClick, onToggleComplete, onToggleSubtask, onAddSubtask, activeDragType, activeSubtaskParentId }) {
+export default function Column({ column, onAddTask, onUpdateColumn, onDeleteColumn, onTaskClick, onToggleComplete, onToggleSubtask, onAddSubtask, onDeleteTask, onDeleteSubtask, onClearCompleted, activeDragType, activeSubtaskParentId }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(column.title);
   const [showMenu, setShowMenu] = useState(false);
@@ -94,6 +94,10 @@ export default function Column({ column, onAddTask, onUpdateColumn, onDeleteColu
                   ))}
                 </div>
               )}
+              <button className="dropdown-item" onClick={() => { onClearCompleted?.(column.id); setShowMenu(false); }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                Excluir concluidas
+              </button>
               <div className="dropdown-divider" />
               <button className="dropdown-item danger" onClick={() => { onDeleteColumn(column.id); setShowMenu(false); }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
@@ -119,6 +123,8 @@ export default function Column({ column, onAddTask, onUpdateColumn, onDeleteColu
               onToggleComplete={onToggleComplete}
               onToggleSubtask={onToggleSubtask}
               onAddSubtask={onAddSubtask}
+              onDelete={onDeleteTask}
+              onDeleteSubtask={onDeleteSubtask}
               activeDragType={activeDragType}
               activeSubtaskParentId={activeSubtaskParentId}
             />

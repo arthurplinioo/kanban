@@ -9,7 +9,7 @@ import { isDueToday, isOverdue } from '../../utils/dateUtils';
 import { useIsMobile } from '../../hooks/useIsMobile';
 
 export default function KanbanBoard({ board, onUpdateBoardTitle, onAddColumn, onUpdateColumn, onDeleteColumn,
-  onAddTask, onUpdateTask, onDeleteTask, onToggleComplete, onAddSubtask, onToggleSubtask, onDeleteSubtask,
+  onAddTask, onUpdateTask, onDeleteTask, onToggleComplete, onAddSubtask, onToggleSubtask, onDeleteSubtask, onClearCompleted,
   onMoveTask, onReorderTask, onReorderColumns, onConvertSubtaskToTask, onMoveSubtaskToTask, isGoogleConnected, onSyncGoogle, searchQuery }) {
 
   const [activeItem, setActiveItem] = useState(null);
@@ -189,6 +189,9 @@ export default function KanbanBoard({ board, onUpdateBoardTitle, onAddColumn, on
           onToggleComplete={onToggleComplete}
           onToggleSubtask={onToggleSubtask}
           onAddSubtask={onAddSubtask}
+          onDeleteTask={onDeleteTask}
+          onDeleteSubtask={onDeleteSubtask}
+          onClearCompleted={onClearCompleted}
           onMoveTask={onMoveTask}
           onReorderTask={onReorderTask}
           onConvertSubtaskToTask={onConvertSubtaskToTask}
@@ -205,6 +208,7 @@ export default function KanbanBoard({ board, onUpdateBoardTitle, onAddColumn, on
                   onAddTask={onAddTask} onUpdateColumn={onUpdateColumn} onDeleteColumn={onDeleteColumn}
                   onTaskClick={handleTaskClick} onToggleComplete={onToggleComplete}
                   onToggleSubtask={onToggleSubtask} onAddSubtask={onAddSubtask}
+                  onDeleteTask={onDeleteTask} onDeleteSubtask={onDeleteSubtask} onClearCompleted={onClearCompleted}
                   activeDragType={activeItem?.type}
                   activeSubtaskParentId={activeItem?.type === 'subtask' ? activeItem.data.parentTaskId : null} />
               ))}
@@ -233,7 +237,7 @@ export default function KanbanBoard({ board, onUpdateBoardTitle, onAddColumn, on
       )}
 
       <TaskDetailModal
-        task={selectedTask}
+        task={selectedTask && (board.columns.flatMap(c => c.tasks).find(t => t.id === selectedTask.id) || selectedTask)}
         isOpen={!!selectedTask}
         onClose={() => setSelectedTask(null)}
         onUpdate={onUpdateTask}

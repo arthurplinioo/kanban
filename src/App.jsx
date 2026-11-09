@@ -230,6 +230,7 @@ function App() {
                 onAddSubtask={boardHook.addSubtask}
                 onToggleSubtask={boardHook.toggleSubtask}
                 onDeleteSubtask={boardHook.deleteSubtask}
+                onClearCompleted={boardHook.clearCompleted}
                 onMoveTask={boardHook.moveTask}
                 onReorderTask={boardHook.reorderTask}
                 onReorderColumns={boardHook.reorderColumns}
@@ -294,7 +295,7 @@ function App() {
 
       {calendarModalState && (
         <TaskDetailModal
-          task={calendarModalState.task}
+          task={(calendarModalState.mode !== 'create' && boardHook.findTask?.(calendarModalState.task.id)) || calendarModalState.task}
           isOpen={!!calendarModalState}
           isCreateMode={calendarModalState.mode === 'create'}
           columns={boardHook.board.columns}
@@ -313,7 +314,14 @@ function App() {
       {boardHook.toasts.length > 0 && (
         <div className="toast-container" role="status" aria-live="polite">
           {boardHook.toasts.map(t => (
-            <div key={t.id} className={`toast ${t.type}`}>{t.message}</div>
+            <div key={t.id} className={`toast ${t.type}`}>
+              <span>{t.message}</span>
+              {t.action && (
+                <button className="toast-action" onClick={() => { t.action.onClick(); boardHook.dismissToast(t.id); }}>
+                  {t.action.label}
+                </button>
+              )}
+            </div>
           ))}
         </div>
       )}

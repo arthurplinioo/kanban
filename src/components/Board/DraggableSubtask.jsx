@@ -1,7 +1,8 @@
 import React from 'react';
 import { useDraggable } from '@dnd-kit/core';
+import { stopDrag, TrashIcon } from './cardActions';
 
-export default function DraggableSubtask({ subtask, parentTaskId, onToggle, dragDisabled = false }) {
+export default function DraggableSubtask({ subtask, parentTaskId, onToggle, onDelete, dragDisabled = false }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `subtask-${subtask.id}`,
     data: {
@@ -35,6 +36,19 @@ export default function DraggableSubtask({ subtask, parentTaskId, onToggle, drag
         )}
       </div>
       <span className="subtask-text">{subtask.text}</span>
+      {onDelete && (
+        <button
+          type="button"
+          className="task-subtask-delete"
+          aria-label="Excluir subtarefa"
+          title="Excluir subtarefa"
+          onMouseDown={stopDrag}
+          onTouchStart={stopDrag}
+          onClick={(e) => { e.stopPropagation(); onDelete(parentTaskId, subtask.id); }}
+        >
+          <TrashIcon size={13} />
+        </button>
+      )}
       <div className="subtask-drag-handle">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/></svg>
       </div>

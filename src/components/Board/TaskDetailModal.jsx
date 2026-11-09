@@ -55,7 +55,9 @@ export default function TaskDetailModal({
     setSyncWithGoogle(task.syncWithGoogle || false);
     setSelectedColumnId(resolvedDefaultColumnId);
     setNewSubtask('');
-  }, [resolvedDefaultColumnId, task]);
+    // So reinicia o formulario ao abrir outra tarefa: marcar/excluir subtarefa
+    // atualiza `task` e nao pode apagar o que ja foi digitado.
+  }, [resolvedDefaultColumnId, task?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!task) return null;
 
@@ -237,7 +239,7 @@ export default function TaskDetailModal({
                   )}
                 </div>
                 <span className={`subtask-text ${subtask.completed ? 'completed' : ''}`}>{subtask.text}</span>
-                <button className="subtask-delete" onClick={() => onDeleteSubtask(task.id, subtask.id)}>
+                <button className="subtask-delete" aria-label="Excluir subtarefa" onClick={() => onDeleteSubtask(task.id, subtask.id)}>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <line x1="18" y1="6" x2="6" y2="18" />
                     <line x1="6" y1="6" x2="18" y2="18" />
