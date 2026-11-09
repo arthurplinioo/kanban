@@ -12,6 +12,8 @@ if (window.top !== window.self) {
 } else {
   document.documentElement.setAttribute('data-variant', VARIANT)
   registerSW({ immediate: true })
+  // Pede ao navegador para nao apagar os dados locais quando faltar espaco.
+  navigator.storage?.persist?.().catch(() => {})
 
   createRoot(document.getElementById('root')).render(
     <StrictMode>

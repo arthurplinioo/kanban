@@ -26,6 +26,22 @@ export function useBoard() {
     return () => clearTimeout(saveTimer.current);
   }, [board, boardKey]);
 
+  // O iOS congela o app assim que ele vai para segundo plano; o timer acima
+  // nunca dispararia. Grava na hora ao sair/ocultar.
+  useEffect(() => {
+    const flush = () => {
+      clearTimeout(saveTimer.current);
+      storage.saveBoard(latest.current.board, latest.current.boardKey);
+    };
+    const onVisibility = () => { if (document.visibilityState === 'hidden') flush(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', flush);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', flush);
+    };
+  }, []);
+
   // Troca o quadro exibido. Grava o atual na hora para nao perder os
   // ultimos 300 ms de edicao do debounce.
   const replaceBoard = useCallback((nextBoard, nextKey) => {

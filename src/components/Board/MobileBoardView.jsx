@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  DndContext, DragOverlay, PointerSensor, TouchSensor, KeyboardSensor, useSensor, useSensors,
+  DndContext, DragOverlay, MouseSensor, TouchSensor, KeyboardSensor, useSensor, useSensors,
   useDroppable, pointerWithin, closestCenter, MeasuringStrategy, useDndContext,
 } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -87,7 +87,7 @@ export default function MobileBoardView({
 
   const sensors = useSensors(
     useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 8 } }),
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor),
   );
 

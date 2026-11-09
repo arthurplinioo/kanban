@@ -1,32 +1,69 @@
 import { useEffect, useRef, useState } from 'react';
 import { driveSync } from '../services/driveSync';
+import { storage } from '../services/storage';
+import { boardToDoc, docToBoard, rebase, isPristineDefaultBoard, same } from '../utils/boardModel';
 
 const POLL_INTERVAL_MS = 20 * 1000;
 const PUSH_DEBOUNCE_MS = 1500;
+const SYNC_ID = 'drive-personal';
 
 /**
- * Sincroniza o quadro completo com o Google Drive (pasta appData do próprio
- * usuário), para que PC e celular fiquem com o mesmo quadro. Diferente do
- * Google Agenda (que só troca eventos com data), isso replica colunas,
- * tarefas, subtarefas e tudo mais.
+ * Sincroniza o "Meu Quadro" com o Google Drive (pasta oculta do app) quando o
+ * Firebase ainda nao esta configurado.
  *
- * Estratégia simples de "última escrita vence": ao conectar, baixa o que
- * estiver no Drive (ou cria o arquivo lá, se for a primeira vez); a cada
- * mudança local, envia (debounced); a cada poucos segundos, verifica se
- * outro dispositivo mudou o arquivo remoto e, se sim, baixa.
+ * Nunca substitui o quadro local inteiro: guarda a ultima versao sincronizada
+ * (base) e, quando o Drive tem algo novo, reaplica as mudancas locais por cima
+ * (mesmo merge por tarefa usado no Firestore). Antes, abrir o app com uma copia
+ * antiga no Drive apagava o que tinha sido editado e ainda nao enviado.
  */
 export function useDriveSync(board, setBoard, isConnected, showToast) {
   const [status, setStatus] = useState('idle'); // idle | syncing | synced | error
   const initializedRef = useRef(false);
   const lastModifiedRef = useRef(null);
-  const lastSerializedRef = useRef(null);
+  // Edicoes de sessoes anteriores nao enviadas ja estao marcadas em `dirty`.
+  const lastAppliedRef = useRef(JSON.stringify(board));
   const pushTimerRef = useRef(null);
+  const boardRef = useRef(board);
+  boardRef.current = board;
+  const syncRef = useRef(storage.loadSyncState(SYNC_ID) || { base: null, dirty: false });
+
+  const persist = () => storage.saveSyncState(SYNC_ID, syncRef.current);
+
+  const apply = (nextBoard) => {
+    lastAppliedRef.current = JSON.stringify(nextBoard);
+    boardRef.current = nextBoard;
+    setBoard(nextBoard);
+  };
+
+  // Mescla o que esta no Drive com o que esta no aparelho e devolve o
+  // resultado (ja aplicado na tela).
+  const mergeRemote = (remoteBoard) => {
+    const remoteDoc = boardToDoc(remoteBoard);
+    const localDoc = boardToDoc(boardRef.current);
+    const { base, dirty } = syncRef.current;
+    let mergedDoc;
+    if (base) {
+      mergedDoc = dirty || !same(base, localDoc) ? rebase(base, localDoc, remoteDoc) : remoteDoc;
+    } else {
+      // Primeira sincronizacao neste aparelho: uniao, sem apagar nada.
+      mergedDoc = isPristineDefaultBoard(boardRef.current) ? remoteDoc : rebase(null, localDoc, remoteDoc);
+    }
+    const merged = docToBoard(mergedDoc);
+    apply(merged);
+    return { merged, changedRemote: !same(mergedDoc, remoteDoc), remoteDoc };
+  };
+
+  const upload = async (boardToSend) => {
+    const result = await driveSync.upload(boardToSend);
+    lastModifiedRef.current = result.modifiedTime;
+    syncRef.current = { base: boardToDoc(boardToSend), dirty: false };
+    persist();
+  };
 
   useEffect(() => {
     if (!isConnected) {
       initializedRef.current = false;
       lastModifiedRef.current = null;
-      lastSerializedRef.current = null;
       setStatus('idle');
       return;
     }
@@ -38,14 +75,16 @@ export function useDriveSync(board, setBoard, isConnected, showToast) {
       try {
         const remote = await driveSync.download();
         if (remote) {
-          setBoard(remote.board);
           lastModifiedRef.current = remote.modifiedTime;
-          lastSerializedRef.current = JSON.stringify(remote.board);
-          showToast?.('Quadro sincronizado com o Google Drive');
+          const { merged, changedRemote, remoteDoc } = mergeRemote(remote.board);
+          if (changedRemote) {
+            await upload(merged);
+          } else {
+            syncRef.current = { base: remoteDoc, dirty: false };
+            persist();
+          }
         } else {
-          const result = await driveSync.upload(board);
-          lastModifiedRef.current = result.modifiedTime;
-          lastSerializedRef.current = JSON.stringify(board);
+          await upload(boardRef.current);
         }
         setStatus('synced');
       } catch (error) {
@@ -53,20 +92,32 @@ export function useDriveSync(board, setBoard, isConnected, showToast) {
         setStatus('error');
       }
     })();
-  }, [isConnected, board, setBoard, showToast]);
+  }, [isConnected]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Toda edicao local fica marcada como pendente (sobrevive a fechar o app)
+  // e e enviada logo em seguida se houver conexao com o Google.
   useEffect(() => {
+    if (JSON.stringify(board) === lastAppliedRef.current) return undefined;
+    if (!syncRef.current.dirty) {
+      syncRef.current = { ...syncRef.current, dirty: true };
+      persist();
+    }
     if (!isConnected || !initializedRef.current) return undefined;
-    const serialized = JSON.stringify(board);
-    if (serialized === lastSerializedRef.current) return undefined;
 
-    if (pushTimerRef.current) clearTimeout(pushTimerRef.current);
+    clearTimeout(pushTimerRef.current);
     pushTimerRef.current = setTimeout(async () => {
       try {
         setStatus('syncing');
-        const result = await driveSync.upload(board);
-        lastModifiedRef.current = result.modifiedTime;
-        lastSerializedRef.current = serialized;
+        const file = await driveSync.findFile();
+        // Outro aparelho mexeu desde a ultima sincronizacao: mescla antes de enviar.
+        if (file && file.modifiedTime !== lastModifiedRef.current) {
+          const remote = await driveSync.download();
+          if (remote) {
+            lastModifiedRef.current = remote.modifiedTime;
+            mergeRemote(remote.board);
+          }
+        }
+        await upload(boardRef.current);
         setStatus('synced');
       } catch (error) {
         console.error('Erro ao enviar mudancas para o Drive:', error);
@@ -75,7 +126,7 @@ export function useDriveSync(board, setBoard, isConnected, showToast) {
     }, PUSH_DEBOUNCE_MS);
 
     return () => clearTimeout(pushTimerRef.current);
-  }, [board, isConnected]);
+  }, [board, isConnected]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!isConnected) return undefined;
@@ -85,16 +136,20 @@ export function useDriveSync(board, setBoard, isConnected, showToast) {
         if (!file || file.modifiedTime === lastModifiedRef.current) return;
         const remote = await driveSync.download();
         if (!remote) return;
-        setBoard(remote.board);
         lastModifiedRef.current = remote.modifiedTime;
-        lastSerializedRef.current = JSON.stringify(remote.board);
+        const { merged, changedRemote, remoteDoc } = mergeRemote(remote.board);
+        if (changedRemote) await upload(merged);
+        else {
+          syncRef.current = { base: remoteDoc, dirty: false };
+          persist();
+        }
         showToast?.('Quadro atualizado a partir de outro dispositivo');
       } catch (error) {
         console.error('Erro ao verificar mudancas no Drive:', error);
       }
     }, POLL_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [isConnected, setBoard, showToast]);
+  }, [isConnected]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return status;
 }
